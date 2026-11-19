@@ -1,5 +1,5 @@
 ---
-description: Use when turning one or more new quote requests into staged proposals and emailing sales about them.
+description: Use when turning one or more new quote requests into staged proposals on the proposals sheet.
 ---
 
 # Quote proposal
@@ -20,19 +20,9 @@ Do these steps for each request id. Finish one request before you start the next
    - No Won quotes for the product: do not stage. Report "needs manual pricing".
 4. **Stage.** Call `stage_quote_proposal` with one line item, the unit price,
    `validUntil` 30 days from today, a one-to-two sentence `rationale`, and the
-   `historyRefs` quote ids you relied on.
-5. **Email sales.** Call `send_sales_email` with:
-   - Subject: `Quote proposal <requestId>: <customer>, <quantity> x <product>`
-   - Body, plain text:
-
-     ```
-     New quote request <requestId> from <customer> (<contact email>).
-     Product: <product>  Quantity: <quantity>  Needed by: <date>
-     Proposed: <unit price> <currency> each, total <total> <currency>, valid until <date>.
-     Basis: <rationale> (history: <quote ids>)
-     Customer notes: <notes or "none">
-     Staged for review. Reply to approve or adjust before it goes to the customer.
-     ```
-
-6. **Record the outcome** for the final reply: staged and emailed, already
-   emailed, or needs manual pricing.
+   `historyRefs` quote ids you relied on. The tool writes one proposals-sheet
+   row for this Request ID (a repeat updates that row) and sets the intake
+   status. Do not write the sheet yourself.
+5. **Record the outcome** for the final reply: staged (created or updated), or
+   needs manual pricing. If the tool result says `target: "mock"`, say that
+   sample data was used.

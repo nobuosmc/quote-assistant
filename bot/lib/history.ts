@@ -1,4 +1,5 @@
-import { cellNumber, cellText, fetchSheetRows, smartsheetSheetId, type DataSource } from "./smartsheet.js";
+import { sheetsConfig } from "./sheets-config.js";
+import { columnIds, hasSmartsheetToken, loadSheetByName, numberAt, textAt, type DataSource } from "./smartsheet.js";
 
 export type QuoteHistoryEntry = {
   quoteId: string;
@@ -11,18 +12,6 @@ export type QuoteHistoryEntry = {
   outcome: string;
 };
 
-/** Column titles expected on the quote-history sheet. */
-export const HISTORY_COLUMNS = {
-  quoteId: "Quote ID",
-  date: "Date",
-  customer: "Customer",
-  product: "Product",
-  quantity: "Quantity",
-  unitPrice: "Unit Price",
-  currency: "Currency",
-  outcome: "Outcome",
-} as const;
-
 const MOCK_HISTORY: QuoteHistoryEntry[] = [
   { quoteId: "Q-0871", date: "2026-03-02", customer: "Northwind Traders", product: "Industrial Sensor Kit", quantity: 25, unitPrice: 412, currency: "USD", outcome: "Won" },
   { quoteId: "Q-0912", date: "2026-06-18", customer: "Northwind Traders", product: "Industrial Sensor Kit", quantity: 50, unitPrice: 389, currency: "USD", outcome: "Won" },
@@ -32,33 +21,35 @@ const MOCK_HISTORY: QuoteHistoryEntry[] = [
   { quoteId: "Q-0981", date: "2026-10-14", customer: "Tailspin Toys", product: "Gateway Controller", quantity: 3, unitPrice: 1950, currency: "USD", outcome: "Pending" },
 ];
 
-async function loadHistory(): Promise<{ source: DataSource; entries: QuoteHistoryEntry[] }> {
-  const sheetId = smartsheetSheetId("history");
-  if (!sheetId) return { source: "mock", entries: MOCK_HISTORY };
-
-  const rows = await fetchSheetRows(sheetId);
-  const entries = rows.map((row) => ({
-    quoteId: cellText(row, HISTORY_COLUMNS.quoteId) || `row-${row.rowId}`,
-    date: cellText(row, HISTORY_COLUMNS.date),
-    customer: cellText(row, HISTORY_COLUMNS.customer),
-    product: cellText(row, HISTORY_COLUMNS.product),
-    quantity: cellNumber(row, HISTORY_COLUMNS.quantity),
-    unitPrice: cellNumber(row, HISTORY_COLUMNS.unitPrice),
-    currency: cellText(row, HISTORY_COLUMNS.currency) || "USD",
-    outcome: cellText(row, HISTORY_COLUMNS.outcome),
-  }));
-  return { source: "smartsheet", entries };
-}
-
 const matches = (value: string, filter: string | undefined) =>
   !filter || value.toLowerCase().includes(filter.toLowerCase());
 
-/** Newest first. */
+/** Newest first. Uses sample rows when SMARTSHEET_ACCESS_TOKEN is absent. */
 export async function readQuoteHistory(filter: { customer?: string; product?: string; limit: number }) {
-  const { source, entries } = await loadHistory();
+  const entries = hasSmartsheetToken() ? await loadHistory() : MOCK_HISTORY;
   const matched = entries
     .filter((entry) => matches(entry.customer, filter.customer) && matches(entry.product, filter.product))
     .sort((a, b) => b.date.localeCompare(a.date))
     .slice(0, filter.limit);
+  const source: DataSource = hasSmartsheetToken() ? "smartsheet" : "mock";
   return { source, entries: matched };
+}
+
+async function loadHistory(): Promise<QuoteHistoryEntry[]> {
+  const { history } = sheetsConfig();
+  if (!history.sheetName) {
+    throw new Error("SMARTSHEET_HISTORY_SHEET_NAME is not set.");
+  }
+  const sheet = await loadSheetByName(history.sheetName);
+  const columns = columnIds(sheet, history.columns);
+  return sheet.rows.map((row) => ({
+    quoteId: textAt(row, columns.quoteId) || `row-${row.id}`,
+    date: textAt(row, columns.date),
+    customer: textAt(row, columns.customer),
+    product: textAt(row, columns.product),
+    quantity: numberAt(row, columns.quantity),
+    unitPrice: numberAt(row, columns.unitPrice),
+    currency: textAt(row, columns.currency) || "USD",
+    outcome: textAt(row, columns.outcome),
+  }));
 }

@@ -1,10 +1,10 @@
 import { defineTool } from "@grok/agent-sdk/tools";
 import * as z from "zod/v4";
-import { getProposal, getQuoteRequest, priceLineItems, saveProposal, type QuoteProposal } from "../lib/quotes.js";
+import { getQuoteRequest, priceLineItems, stageProposal, type QuoteProposal } from "../lib/quotes.js";
 
 export default defineTool({
   description:
-    "Stage (save) a draft quote proposal for one request. Totals are computed here; pass unit prices only. Re-staging the same request replaces the draft unless it was already emailed. Does not contact anyone.",
+    "Stage a quote proposal for one request. Totals are computed here; pass unit prices only. Writes one row on the proposals sheet, keyed by Request ID, and sets the intake row's status. A repeat updates that same row. With no Smartsheet token, both writes go to the mock sheet. Does not contact anyone.",
   inputSchema: z.object({
     requestId: z.string(),
     currency: z.string().length(3).default("USD"),
@@ -22,14 +22,10 @@ export default defineTool({
     historyRefs: z.array(z.string()).default([]).describe("Quote IDs from read_quote_history that informed the price."),
   }),
   effect: "idempotent",
+  dryRunResult: ({ requestId }) => ({ staged: false, dryRun: true, requestId }),
   async execute(input, ctx) {
-    const request = await getQuoteRequest(input.requestId);
+    const request = await getQuoteRequest(ctx.host.kv, input.requestId);
     if (!request) throw new Error(`Unknown quote request ${input.requestId}. Call list_quote_requests first.`);
-
-    const existing = await getProposal(ctx.host.kv, input.requestId);
-    if (existing?.emailedAt) {
-      return { staged: false, reason: "already emailed to sales", proposal: existing };
-    }
 
     const { lineItems, total } = priceLineItems(input.lineItems);
     const proposal: QuoteProposal = {
@@ -42,9 +38,7 @@ export default defineTool({
       rationale: input.rationale,
       historyRefs: input.historyRefs,
       stagedAt: new Date().toISOString(),
-      emailedAt: null,
     };
-    await saveProposal(ctx.host.kv, proposal);
-    return { staged: true, proposal };
+    return stageProposal(ctx.host.kv, proposal);
   },
 });

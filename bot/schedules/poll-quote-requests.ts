@@ -12,7 +12,7 @@ export default defineSchedule({
     const ids = requests.map((request) => request.requestId).join(", ");
     waitUntil(
       receive("http", {
-        message: `Scheduled poll found ${count} new quote request(s): ${ids}. Follow the quote-proposal skill for each one: read history, stage a proposal, and email sales. Then summarize what you did.`,
+        message: `Scheduled poll found ${count} new quote request(s): ${ids}. Follow the quote-proposal skill for each one: read history, then stage a proposal. Then summarize what you did.`,
         auth: appAuth,
       }),
     );

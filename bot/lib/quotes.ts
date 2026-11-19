@@ -1,5 +1,17 @@
-import type { HostKvApi } from "@grok/agent-sdk";
-import { cellNumber, cellText, fetchSheetRows, smartsheetSheetId, type DataSource } from "./smartsheet.js";
+import type { HostKvApi, JsonValue } from "@grok/agent-sdk";
+import { sheetsConfig } from "./sheets-config.js";
+import {
+  columnIds,
+  hasSmartsheetToken,
+  loadSheetByName,
+  numberAt,
+  textAt,
+  updateMatchingRow,
+  upsertByKey,
+  type DataSource,
+  type SheetCell,
+} from "./smartsheet.js";
+import type { ProposalField } from "./sheets-config.js";
 
 export type QuoteRequest = {
   requestId: string;
@@ -29,22 +41,23 @@ export type QuoteProposal = {
   rationale: string;
   historyRefs: string[];
   stagedAt: string;
-  emailedAt: string | null;
 };
 
-/** Column titles expected on the quote-requests sheet. */
-export const REQUEST_COLUMNS = {
-  requestId: "Request ID",
-  customer: "Customer",
-  contactEmail: "Contact Email",
-  product: "Product",
-  quantity: "Quantity",
-  neededBy: "Needed By",
-  notes: "Notes",
-  status: "Status",
-} as const;
+export type StageResult = {
+  staged: true;
+  target: DataSource;
+  write: "created" | "updated";
+  sheetName: string;
+  requestStatus: string;
+  proposal: QuoteProposal;
+};
 
 const OPEN_STATUSES = new Set(["", "new", "open", "requested"]);
+
+/** Status overrides applied to the sample intake rows. */
+const MOCK_STATUS_KEY = "mock/request-status";
+/** Proposals keyed by Request ID. A repeat replaces the same entry. */
+const MOCK_PROPOSALS_KEY = "mock/proposals";
 
 const MOCK_REQUESTS: QuoteRequest[] = [
   {
@@ -69,52 +82,91 @@ const MOCK_REQUESTS: QuoteRequest[] = [
   },
 ];
 
-const proposalKey = (requestId: string) => `proposals/${requestId}`;
+export async function listQuoteRequests(kv: HostKvApi): Promise<{ source: DataSource; requests: QuoteRequest[] }> {
+  if (!hasSmartsheetToken()) {
+    const statuses = await readStringMap(kv, MOCK_STATUS_KEY);
+    const requests = MOCK_REQUESTS.map((request) => ({
+      ...request,
+      status: statuses[request.requestId] ?? request.status,
+    }));
+    return { source: "mock", requests };
+  }
 
-export async function listQuoteRequests(): Promise<{ source: DataSource; requests: QuoteRequest[] }> {
-  const sheetId = smartsheetSheetId("requests");
-  if (!sheetId) return { source: "mock", requests: MOCK_REQUESTS };
-
-  const rows = await fetchSheetRows(sheetId);
-  const requests = rows
+  const { requests: intake } = sheetsConfig();
+  const sheet = await loadSheetByName(intake.sheetName);
+  const columns = columnIds(sheet, intake.columns);
+  const requests = sheet.rows
     .map((row) => ({
-      requestId: cellText(row, REQUEST_COLUMNS.requestId) || `row-${row.rowId}`,
-      customer: cellText(row, REQUEST_COLUMNS.customer),
-      contactEmail: cellText(row, REQUEST_COLUMNS.contactEmail),
-      product: cellText(row, REQUEST_COLUMNS.product),
-      quantity: cellNumber(row, REQUEST_COLUMNS.quantity),
-      neededBy: cellText(row, REQUEST_COLUMNS.neededBy),
-      notes: cellText(row, REQUEST_COLUMNS.notes),
-      status: cellText(row, REQUEST_COLUMNS.status),
+      requestId: textAt(row, columns.requestId) || `row-${row.id}`,
+      customer: textAt(row, columns.customer),
+      contactEmail: textAt(row, columns.contactEmail),
+      product: textAt(row, columns.product),
+      quantity: numberAt(row, columns.quantity),
+      neededBy: textAt(row, columns.neededBy),
+      notes: textAt(row, columns.notes),
+      status: textAt(row, columns.status),
     }))
     .filter((request) => request.customer || request.product);
   return { source: "smartsheet", requests };
 }
 
-/** Open requests that have no staged proposal yet. */
+/** Requests whose status is still open. A staged request is no longer open. */
 export async function listNewQuoteRequests(kv: HostKvApi) {
-  const { source, requests } = await listQuoteRequests();
-  const fresh: QuoteRequest[] = [];
-  for (const request of requests) {
-    if (!OPEN_STATUSES.has(request.status.trim().toLowerCase())) continue;
-    if ((await kv.get(proposalKey(request.requestId))) !== undefined) continue;
-    fresh.push(request);
-  }
+  const { source, requests } = await listQuoteRequests(kv);
+  const fresh = requests.filter((request) => OPEN_STATUSES.has(request.status.trim().toLowerCase()));
   return { source, requests: fresh };
 }
 
-export async function getQuoteRequest(requestId: string): Promise<QuoteRequest | undefined> {
-  const { requests } = await listQuoteRequests();
+export async function getQuoteRequest(kv: HostKvApi, requestId: string): Promise<QuoteRequest | undefined> {
+  const { requests } = await listQuoteRequests(kv);
   return requests.find((request) => request.requestId === requestId);
 }
 
-export async function getProposal(kv: HostKvApi, requestId: string): Promise<QuoteProposal | undefined> {
-  const value = await kv.get(proposalKey(requestId));
-  return value === undefined ? undefined : (value as QuoteProposal);
-}
+/**
+ * Write the proposal (one row per Request ID) and set the intake row's status.
+ * With no token, both writes go to the mock store in KV.
+ */
+export async function stageProposal(kv: HostKvApi, proposal: QuoteProposal): Promise<StageResult> {
+  const config = sheetsConfig();
+  if (OPEN_STATUSES.has(config.requests.proposedStatus.trim().toLowerCase())) {
+    throw new Error(
+      `Proposed status "${config.requests.proposedStatus}" is still an open status, so the request would be polled again.`,
+    );
+  }
 
-export async function saveProposal(kv: HostKvApi, proposal: QuoteProposal): Promise<void> {
-  await kv.put(proposalKey(proposal.requestId), proposal);
+  if (!hasSmartsheetToken()) return stageMock(kv, proposal, config.proposals.sheetName, config.requests.proposedStatus);
+
+  const proposalSheet = await loadSheetByName(config.proposals.sheetName);
+  const proposalColumns = columnIds(proposalSheet, config.proposals.columns);
+  const write = await upsertByKey(
+    proposalSheet,
+    proposalColumns.requestId,
+    proposal.requestId,
+    config.proposals.columns.requestId,
+    proposalCells(proposal, proposalColumns),
+  );
+
+  const intake = await loadSheetByName(config.requests.sheetName);
+  const intakeColumns = columnIds(intake, config.requests.columns);
+  try {
+    await updateMatchingRow(intake, intakeColumns.requestId, proposal.requestId, config.requests.columns.requestId, [
+      { columnId: intakeColumns.status, value: config.requests.proposedStatus },
+    ]);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(
+      `Proposal row ${write} on "${config.proposals.sheetName}" for ${proposal.requestId}, but the intake status was not updated: ${message}`,
+    );
+  }
+
+  return {
+    staged: true,
+    target: "smartsheet",
+    write,
+    sheetName: config.proposals.sheetName,
+    requestStatus: config.requests.proposedStatus,
+    proposal,
+  };
 }
 
 export function priceLineItems(items: { product: string; quantity: number; unitPrice: number }[]) {
@@ -124,6 +176,62 @@ export function priceLineItems(items: { product: string; quantity: number; unitP
   }));
   const total = roundCents(lineItems.reduce((sum, item) => sum + item.lineTotal, 0));
   return { lineItems, total };
+}
+
+async function stageMock(kv: HostKvApi, proposal: QuoteProposal, sheetName: string, requestStatus: string): Promise<StageResult> {
+  const proposals = await readProposalMap(kv);
+  const write = proposals[proposal.requestId] ? "updated" : "created";
+  proposals[proposal.requestId] = proposal;
+  await kv.put(MOCK_PROPOSALS_KEY, proposals);
+
+  const statuses = await readStringMap(kv, MOCK_STATUS_KEY);
+  statuses[proposal.requestId] = requestStatus;
+  await kv.put(MOCK_STATUS_KEY, statuses);
+
+  return { staged: true, target: "mock", write, sheetName, requestStatus, proposal };
+}
+
+function proposalCells(proposal: QuoteProposal, columns: Record<ProposalField, number>): SheetCell[] {
+  const single = proposal.lineItems.length === 1 ? proposal.lineItems[0] : undefined;
+  const values: Record<ProposalField, CellValue> = {
+    requestId: proposal.requestId,
+    customer: proposal.customer,
+    currency: proposal.currency,
+    product: single ? single.product : proposal.lineItems.map((item) => item.product).join("; "),
+    quantity: single ? single.quantity : proposal.lineItems.reduce((sum, item) => sum + item.quantity, 0),
+    unitPrice: single ? single.unitPrice : null,
+    lineItems: proposal.lineItems
+      .map((item) => `${item.product} x ${item.quantity} @ ${item.unitPrice} = ${item.lineTotal}`)
+      .join("; "),
+    total: proposal.total,
+    validUntil: proposal.validUntil,
+    rationale: proposal.rationale,
+    historyRefs: proposal.historyRefs.join(", "),
+    stagedAt: proposal.stagedAt,
+  };
+  return (Object.keys(values) as ProposalField[]).map((field) => ({ columnId: columns[field], value: values[field] }));
+}
+
+type CellValue = string | number | null;
+
+async function readStringMap(kv: HostKvApi, key: string): Promise<Record<string, string>> {
+  const value = await kv.get(key);
+  if (!isRecord(value)) return {};
+  const statuses: Record<string, string> = {};
+  for (const [id, status] of Object.entries(value)) {
+    if (typeof status === "string") statuses[id] = status;
+  }
+  return statuses;
+}
+
+async function readProposalMap(kv: HostKvApi): Promise<Record<string, QuoteProposal>> {
+  const value = await kv.get(MOCK_PROPOSALS_KEY);
+  if (!isRecord(value)) return {};
+  return value as Record<string, QuoteProposal>;
+}
+
+function isRecord(value: JsonValue | undefined): value is { [key: string]: JsonValue } {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function roundCents(value: number): number {
