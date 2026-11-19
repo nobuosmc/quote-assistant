@@ -4,7 +4,7 @@ import { readQuoteHistory } from "../lib/history.js";
 
 export default defineTool({
   description:
-    "Read past quotes, newest first, filtered by customer and/or product (case-insensitive substring). Use before pricing a proposal. `source: \"mock\"` means the rows are sample data.",
+    "Read past quotes from the QuoteTracking workbook, newest first, filtered by customer and/or product (case-insensitive substring). Use before pricing a proposal. `source: \"mock\"` means Microsoft Graph is not configured and the rows are sample data. `source: \"excel\"` means the workbook was read.",
   inputSchema: z.object({
     customer: z.string().optional(),
     product: z.string().optional(),

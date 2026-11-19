@@ -1,9 +1,12 @@
 /**
- * Sheet names and column titles for the three Smartsheets.
+ * Where each logical field sits.
  *
- * Names resolve to sheet ids at runtime. Titles map a logical field to a
- * column. An environment variable, when set, replaces that one default.
- * Titles must match the sheet exactly. A missing column is an error.
+ * Smartsheet sheets are found by name. Columns are not. Real column titles
+ * are not known yet, so a field maps to Column1, Column2, Column3, and so
+ * on: Column1 is the first column. A sheet or workbook with fewer columns
+ * than the map needs is an error.
+ *
+ * History is not a Smartsheet. It is the QuoteTracking workbook.
  */
 
 export type RequestField =
@@ -40,45 +43,45 @@ export type ProposalField =
   | "historyRefs"
   | "stagedAt";
 
-export type ColumnTitles<F extends string> = Record<F, string>;
+export type ColumnMap<F extends string> = Record<F, string>;
 
-type FieldDefault<F extends string> = { field: F; env: string; title: string };
+type FieldDefault<F extends string> = { field: F; env?: string; column: string };
 
 const REQUEST_FIELDS: FieldDefault<RequestField>[] = [
-  { field: "requestId", env: "SMARTSHEET_REQUESTS_COL_REQUEST_ID", title: "Request ID" },
-  { field: "customer", env: "SMARTSHEET_REQUESTS_COL_CUSTOMER", title: "Customer" },
-  { field: "contactEmail", env: "SMARTSHEET_REQUESTS_COL_CONTACT_EMAIL", title: "Contact Email" },
-  { field: "product", env: "SMARTSHEET_REQUESTS_COL_PRODUCT", title: "Product" },
-  { field: "quantity", env: "SMARTSHEET_REQUESTS_COL_QUANTITY", title: "Quantity" },
-  { field: "neededBy", env: "SMARTSHEET_REQUESTS_COL_NEEDED_BY", title: "Needed By" },
-  { field: "notes", env: "SMARTSHEET_REQUESTS_COL_NOTES", title: "Notes" },
-  { field: "status", env: "SMARTSHEET_REQUESTS_COL_STATUS", title: "Status" },
+  { field: "requestId", env: "SMARTSHEET_REQUESTS_COL_REQUEST_ID", column: "Column1" },
+  { field: "customer", env: "SMARTSHEET_REQUESTS_COL_CUSTOMER", column: "Column2" },
+  { field: "contactEmail", env: "SMARTSHEET_REQUESTS_COL_CONTACT_EMAIL", column: "Column3" },
+  { field: "product", env: "SMARTSHEET_REQUESTS_COL_PRODUCT", column: "Column4" },
+  { field: "quantity", env: "SMARTSHEET_REQUESTS_COL_QUANTITY", column: "Column5" },
+  { field: "neededBy", env: "SMARTSHEET_REQUESTS_COL_NEEDED_BY", column: "Column6" },
+  { field: "notes", env: "SMARTSHEET_REQUESTS_COL_NOTES", column: "Column7" },
+  { field: "status", env: "SMARTSHEET_REQUESTS_COL_STATUS", column: "Column8" },
 ];
 
 const HISTORY_FIELDS: FieldDefault<HistoryField>[] = [
-  { field: "quoteId", env: "SMARTSHEET_HISTORY_COL_QUOTE_ID", title: "Quote ID" },
-  { field: "date", env: "SMARTSHEET_HISTORY_COL_DATE", title: "Date" },
-  { field: "customer", env: "SMARTSHEET_HISTORY_COL_CUSTOMER", title: "Customer" },
-  { field: "product", env: "SMARTSHEET_HISTORY_COL_PRODUCT", title: "Product" },
-  { field: "quantity", env: "SMARTSHEET_HISTORY_COL_QUANTITY", title: "Quantity" },
-  { field: "unitPrice", env: "SMARTSHEET_HISTORY_COL_UNIT_PRICE", title: "Unit Price" },
-  { field: "currency", env: "SMARTSHEET_HISTORY_COL_CURRENCY", title: "Currency" },
-  { field: "outcome", env: "SMARTSHEET_HISTORY_COL_OUTCOME", title: "Outcome" },
+  { field: "quoteId", column: "Column1" },
+  { field: "date", column: "Column2" },
+  { field: "customer", column: "Column3" },
+  { field: "product", column: "Column4" },
+  { field: "quantity", column: "Column5" },
+  { field: "unitPrice", column: "Column6" },
+  { field: "currency", column: "Column7" },
+  { field: "outcome", column: "Column8" },
 ];
 
 const PROPOSAL_FIELDS: FieldDefault<ProposalField>[] = [
-  { field: "requestId", env: "SMARTSHEET_PROPOSALS_COL_REQUEST_ID", title: "Request ID" },
-  { field: "customer", env: "SMARTSHEET_PROPOSALS_COL_CUSTOMER", title: "Customer" },
-  { field: "currency", env: "SMARTSHEET_PROPOSALS_COL_CURRENCY", title: "Currency" },
-  { field: "product", env: "SMARTSHEET_PROPOSALS_COL_PRODUCT", title: "Product" },
-  { field: "quantity", env: "SMARTSHEET_PROPOSALS_COL_QUANTITY", title: "Quantity" },
-  { field: "unitPrice", env: "SMARTSHEET_PROPOSALS_COL_UNIT_PRICE", title: "Unit Price" },
-  { field: "lineItems", env: "SMARTSHEET_PROPOSALS_COL_LINE_ITEMS", title: "Line Items" },
-  { field: "total", env: "SMARTSHEET_PROPOSALS_COL_TOTAL", title: "Total" },
-  { field: "validUntil", env: "SMARTSHEET_PROPOSALS_COL_VALID_UNTIL", title: "Valid Until" },
-  { field: "rationale", env: "SMARTSHEET_PROPOSALS_COL_RATIONALE", title: "Rationale" },
-  { field: "historyRefs", env: "SMARTSHEET_PROPOSALS_COL_HISTORY_REFS", title: "History Refs" },
-  { field: "stagedAt", env: "SMARTSHEET_PROPOSALS_COL_STAGED_AT", title: "Staged At" },
+  { field: "requestId", env: "SMARTSHEET_PROPOSALS_COL_REQUEST_ID", column: "Column1" },
+  { field: "customer", env: "SMARTSHEET_PROPOSALS_COL_CUSTOMER", column: "Column2" },
+  { field: "currency", env: "SMARTSHEET_PROPOSALS_COL_CURRENCY", column: "Column3" },
+  { field: "product", env: "SMARTSHEET_PROPOSALS_COL_PRODUCT", column: "Column4" },
+  { field: "quantity", env: "SMARTSHEET_PROPOSALS_COL_QUANTITY", column: "Column5" },
+  { field: "unitPrice", env: "SMARTSHEET_PROPOSALS_COL_UNIT_PRICE", column: "Column6" },
+  { field: "lineItems", env: "SMARTSHEET_PROPOSALS_COL_LINE_ITEMS", column: "Column7" },
+  { field: "total", env: "SMARTSHEET_PROPOSALS_COL_TOTAL", column: "Column8" },
+  { field: "validUntil", env: "SMARTSHEET_PROPOSALS_COL_VALID_UNTIL", column: "Column9" },
+  { field: "rationale", env: "SMARTSHEET_PROPOSALS_COL_RATIONALE", column: "Column10" },
+  { field: "historyRefs", env: "SMARTSHEET_PROPOSALS_COL_HISTORY_REFS", column: "Column11" },
+  { field: "stagedAt", env: "SMARTSHEET_PROPOSALS_COL_STAGED_AT", column: "Column12" },
 ];
 
 function fromEnv(name: string, fallback: string): string {
@@ -86,16 +89,34 @@ function fromEnv(name: string, fallback: string): string {
   return value ? value : fallback;
 }
 
-function titles<F extends string>(fields: FieldDefault<F>[]): ColumnTitles<F> {
-  const columns = {} as ColumnTitles<F>;
-  for (const field of fields) columns[field.field] = fromEnv(field.env, field.title);
-  return columns;
+function columns<F extends string>(fields: FieldDefault<F>[]): ColumnMap<F> {
+  const map = {} as ColumnMap<F>;
+  for (const field of fields) {
+    map[field.field] = field.env ? fromEnv(field.env, field.column) : field.column;
+  }
+  return map;
+}
+
+/** 1-based. "Column1" is the first column. Anything else is an error. */
+export function columnPosition(name: string): number {
+  const match = /^Column(\d+)$/.exec(name);
+  const position = match ? Number(match[1]) : Number.NaN;
+  if (!Number.isInteger(position) || position < 1) {
+    throw new Error(`"${name}" is not a column position. Use Column1, Column2, and so on.`);
+  }
+  return position;
+}
+
+export function requiredColumnCount(map: Record<string, string>): number {
+  let required = 0;
+  for (const name of Object.values(map)) required = Math.max(required, columnPosition(name));
+  return required;
 }
 
 export type SheetsConfig = {
-  requests: { sheetName: string; columns: ColumnTitles<RequestField>; proposedStatus: string };
-  history: { sheetName: string; columns: ColumnTitles<HistoryField> };
-  proposals: { sheetName: string; columns: ColumnTitles<ProposalField> };
+  requests: { sheetName: string; columns: ColumnMap<RequestField>; proposedStatus: string };
+  history: { workbookName: string; columns: ColumnMap<HistoryField> };
+  proposals: { sheetName: string; columns: ColumnMap<ProposalField> };
 };
 
 /** Read at call time so a test or a host can set the environment first. */
@@ -103,16 +124,16 @@ export function sheetsConfig(): SheetsConfig {
   return {
     requests: {
       sheetName: fromEnv("SMARTSHEET_REQUESTS_SHEET_NAME", "SalesQuoteRequest"),
-      columns: titles(REQUEST_FIELDS),
+      columns: columns(REQUEST_FIELDS),
       proposedStatus: fromEnv("SMARTSHEET_PROPOSED_STATUS", "Proposed"),
     },
     history: {
-      sheetName: fromEnv("SMARTSHEET_HISTORY_SHEET_NAME", ""),
-      columns: titles(HISTORY_FIELDS),
+      workbookName: "QuoteTracking.xlsx",
+      columns: columns(HISTORY_FIELDS),
     },
     proposals: {
       sheetName: fromEnv("SMARTSHEET_PROPOSALS_SHEET_NAME", "ostestQuote"),
-      columns: titles(PROPOSAL_FIELDS),
+      columns: columns(PROPOSAL_FIELDS),
     },
   };
 }

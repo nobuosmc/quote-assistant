@@ -1,3 +1,5 @@
+import { columnPosition } from "./sheets-config.js";
+
 const API_BASE = "https://api.smartsheet.com/2.0";
 
 export type CellValue = string | number | boolean | null;
@@ -12,7 +14,7 @@ export type SheetRow = { id: number; cells: { columnId: number; value?: CellValu
 export type LoadedSheet = {
   id: number;
   name: string;
-  columns: { id: number; title: string }[];
+  columns: { id: number; index: number }[];
   rows: SheetRow[];
 };
 
@@ -21,7 +23,7 @@ type ListedSheet = { id: number; name: string };
 type SheetPage = {
   id: number;
   name: string;
-  columns: { id: number; title: string }[];
+  columns: { id: number; index?: number }[];
   rows?: SheetRow[];
   totalPages?: number;
 };
@@ -42,33 +44,31 @@ export function matchSheetName(sheets: ListedSheet[], name: string): number {
 }
 
 /**
- * Column ids for the given titles. The title must match one column exactly.
- * A missing title or two columns with the same title is an error.
+ * Column ids by position. Column1 is index 0. A sheet with fewer columns
+ * than the map needs is an error. Titles are not consulted.
  */
-export function columnIds<F extends string>(sheet: LoadedSheet, titles: Record<F, string>): Record<F, number> {
-  const byTitle = new Map<string, number[]>();
+export function columnIds<F extends string>(sheet: LoadedSheet, positions: Record<F, string>): Record<F, number> {
+  const byIndex = new Map<number, number>();
   for (const column of sheet.columns) {
-    const ids = byTitle.get(column.title) ?? [];
-    ids.push(column.id);
-    byTitle.set(column.title, ids);
+    if (byIndex.has(column.index)) {
+      throw new Error(`Sheet "${sheet.name}" has two columns at index ${column.index}.`);
+    }
+    byIndex.set(column.index, column.id);
   }
 
   const missing: string[] = [];
-  const ambiguous: string[] = [];
   const ids = {} as Record<F, number>;
-  for (const field of Object.keys(titles) as F[]) {
-    const title = titles[field];
-    const found = byTitle.get(title) ?? [];
-    if (found.length === 0) missing.push(`${field} (title "${title}")`);
-    else if (found.length > 1) ambiguous.push(`"${title}"`);
-    else ids[field] = found[0];
+  for (const field of Object.keys(positions) as F[]) {
+    const name = positions[field];
+    const id = byIndex.get(columnPosition(name) - 1);
+    if (id === undefined) missing.push(`${field} (${name})`);
+    else ids[field] = id;
   }
 
-  if (missing.length > 0 || ambiguous.length > 0) {
-    const parts: string[] = [];
-    if (missing.length > 0) parts.push(`missing ${missing.join(", ")}`);
-    if (ambiguous.length > 0) parts.push(`ambiguous titles ${ambiguous.join(", ")}`);
-    throw new Error(`Sheet "${sheet.name}" column map failed: ${parts.join("; ")}.`);
+  if (missing.length > 0) {
+    throw new Error(
+      `Sheet "${sheet.name}" has ${sheet.columns.length} columns, which is fewer than the mapping needs: ${missing.join(", ")}.`,
+    );
   }
   return ids;
 }
@@ -156,7 +156,15 @@ async function loadSheet(id: number): Promise<LoadedSheet> {
     const next = (await api(`/sheets/${id}?pageSize=${pageSize}&page=${page}`, "GET")) as SheetPage;
     rows.push(...(next.rows ?? []));
   }
-  return { id: first.id, name: first.name, columns: first.columns, rows };
+  if (first.columns.some((column) => typeof column.index !== "number")) {
+    throw new Error(`Sheet "${first.name}" column response has no index.`);
+  }
+  return {
+    id: first.id,
+    name: first.name,
+    columns: first.columns.map((column) => ({ id: column.id, index: column.index as number })),
+    rows,
+  };
 }
 
 async function api(path: string, method: "GET" | "POST" | "PUT", body?: unknown): Promise<unknown> {
